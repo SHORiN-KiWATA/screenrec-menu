@@ -35,7 +35,7 @@ GIF_MARKER="$STATE_DIR/is_gif"
 TICKPIDFILE="$STATE_DIR/tickpid"
 WAYBAR_PIDS_CACHE="$STATE_DIR/waybar.pids"
 CURRENT_ENGINE_FILE="$STATE_DIR/active_engine"
-BOXPIDFILE="$STATE_DIR/boxpid" # 【新增】记录画框进程 PID
+BOXPIDFILE="$STATE_DIR/boxpid"
 
 XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}"
 CONFIG_DIR="$XDG_CACHE_HOME/shorin-screenrec"
@@ -49,7 +49,7 @@ CFG_AUDIO_DEVICE="$CONFIG_DIR/audio_device"
 CFG_DRM="$CONFIG_DIR/drm_device"
 CFG_EXT="$CONFIG_DIR/container_ext"
 
-# 【新增】寻找分离出的 drawbox.py
+# 寻找分离出的 drawbox.py
 if [[ -f "/usr/share/$APP_NAME/drawbox.py" ]]; then
     DRAWBOX="/usr/share/$APP_NAME/drawbox.py"
 else
@@ -539,6 +539,12 @@ json_escape() { sed ':a;N;$!ba;s/\\/\\\\/g;s/"/\\"/g;s/\n/\\n/g'; }
 
 # ================== Start / Stop ==================
 start_rec() {
+  if [[ -f "$BOXPIDFILE" ]]; then
+    local bpid; read -r bpid <"$BOXPIDFILE" 2>/dev/null || true
+    [[ -n "$bpid" ]] && kill -9 "$bpid" 2>/dev/null || true
+    rm -f "$BOXPIDFILE"
+  fi
+
   if is_running; then 
     local msg="$(msg already_running)"
     echo_terminal "$msg"; notify "$msg"; exit 0
@@ -581,13 +587,11 @@ start_rec() {
     GEOM="$(echo -n "$GEOM" | tr -s '[:space:]' ' ')"
     if [[ "${GEOM_IN_NAME,,}" == "on" ]]; then gtok="$(geom_token "$GEOM")"; marker="REGION${gtok:+-$gtok}"; else marker="REGION"; fi
 
-    # 【新增】区域画框逻辑
     if [[ -n "$GEOM" && -f "$DRAWBOX" ]]; then
-      # 使用正则安全提取 x,y wxh 坐标
       if [[ "$GEOM" =~ ([0-9]+),([0-9]+)[[:space:]]+([0-9]+)x([0-9]+) ]]; then
         python3 "$DRAWBOX" "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}" "${BASH_REMATCH[4]}" &
         echo $! > "$BOXPIDFILE"
-        sleep 0.3 # 给予 GTK 0.3 秒缓冲时间以防被录制引擎延迟挂起
+        sleep 0.3 
       fi
     fi
   fi
@@ -632,7 +636,6 @@ start_rec() {
       ;;
   esac
 
-  # 在后台启动录屏工具
   setsid nohup "$ENGINE" "${args[@]}" >/dev/null 2>&1 &
   local pid=$!
   echo "$pid" >"$PIDFILE"
@@ -653,7 +656,14 @@ start_rec() {
 }
 
 stop_rec() {
+  if [[ -f "$BOXPIDFILE" ]]; then
+    local bpid; read -r bpid <"$BOXPIDFILE" 2>/dev/null || true
+    [[ -n "$bpid" ]] && kill -9 "$bpid" 2>/dev/null || true
+    rm -f "$BOXPIDFILE"
+  fi
+
   if ! is_running; then 
+    rm -f "$PIDFILE" "$MODEFILE" "$CURRENT_ENGINE_FILE" "$TICKPIDFILE"
     local msg="$(msg not_running)"
     echo_terminal "$msg"; notify "$msg"; emit_waybar_signal; exit 0
   fi
@@ -669,13 +679,6 @@ stop_rec() {
 
   rm -f "$PIDFILE" "$MODEFILE" "$CURRENT_ENGINE_FILE"
   stop_tick
-
-  # 【新增】清理红框后台进程
-  if [[ -f "$BOXPIDFILE" ]]; then
-    local bpid; read -r bpid <"$BOXPIDFILE" 2>/dev/null || true
-    [[ -n "$bpid" ]] && kill "$bpid" 2>/dev/null || true
-    rm -f "$BOXPIDFILE"
-  fi
 
   local save_path=""; [[ -r "$SAVEPATH_FILE" ]] && read -r save_path <"$SAVEPATH_FILE"
   
