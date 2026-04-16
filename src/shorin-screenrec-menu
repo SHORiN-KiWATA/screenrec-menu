@@ -649,7 +649,6 @@ start_rec() {
   echo_terminal "\n=============================="
   echo_terminal "$note"
   echo_terminal "==============================\n"
-  notify "$note"
   
   emit_waybar_signal
   start_tick
