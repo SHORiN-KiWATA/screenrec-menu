@@ -33,7 +33,6 @@ SAVEPATH_FILE="$STATE_DIR/save_path"
 MODEFILE="$STATE_DIR/mode"
 GIF_MARKER="$STATE_DIR/is_gif"
 TICKPIDFILE="$STATE_DIR/tickpid"
-WAYBAR_PIDS_CACHE="$STATE_DIR/waybar.pids"
 CURRENT_ENGINE_FILE="$STATE_DIR/active_engine"
 BOXPIDFILE="$STATE_DIR/boxpid"
 
@@ -258,16 +257,14 @@ notify() { has notify-send && notify-send "$APP_NAME" "$1" || true; }
 echo_terminal() { printf "%b\n" "$1"; }
 
 signal_waybar() {
+  [[ "${WAYBAR_POKE,,}" == "off" ]] && return 0
   local pids
-  if [[ -r "$WAYBAR_PIDS_CACHE" ]]; then
-    pids="$(tr '\n' ' ' <"$WAYBAR_PIDS_CACHE")"
-    if [[ -n "$pids" ]]; then kill -RTMIN+"$WAYBAR_SIG" $pids 2>/dev/null && return 0; fi
-  fi
   pids="$(pgrep -x -u "$UID" waybar 2>/dev/null | tr '\n' ' ')"
-  [[ -n "$pids" ]] && printf '%s\n' $pids >"$WAYBAR_PIDS_CACHE"
-  [[ -n "$pids" ]] && kill -RTMIN+"$WAYBAR_SIG" $pids 2>/dev/null || true
+  if [[ -n "$pids" ]]; then
+    kill -RTMIN+"$WAYBAR_SIG" $pids 2>/dev/null || true
+  fi
 }
-emit_waybar_signal() { [[ "${WAYBAR_POKE,,}" == "off" ]] && return 0; signal_waybar; }
+emit_waybar_signal() { signal_waybar; }
 
 start_tick() {
   if [[ -f "$TICKPIDFILE" ]]; then
@@ -400,7 +397,8 @@ menu_pick() {
 # ---------- Outputs / Settings / Mode ----------
 list_outputs() {
   local raw=""
-  if has niri; then raw="$(niri msg outputs 2>/dev/null | awk -F '[()]' '/^Output/ {print $2}')"
+  if has niri && has jq; then raw="$(niri msg -j outputs 2>/dev/null | jq -r 'keys[]')"
+  elif has niri; then raw="$(niri msg outputs 2>/dev/null | awk -F '[()]' '/^Output/ {print $2}')"
   elif has hyprctl && has jq; then raw="$(hyprctl monitors -j 2>/dev/null | jq -r '.[].name')"
   elif has swaymsg && has jq; then raw="$(swaymsg -t get_outputs 2>/dev/null | jq -r '.[].name')"
   elif has wlr-randr; then raw="$(wlr-randr 2>/dev/null | awk '/^[^ ]/{print $1}')"
