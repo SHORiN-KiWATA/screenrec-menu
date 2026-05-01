@@ -582,7 +582,8 @@ start_rec() {
       set +e; GEOM="$(slurp)"; local rc=$?; set -e
       if [[ $rc -ne 0 || -z "${GEOM// /}" ]]; then echo_terminal "$(msg cancel_no_region)"; emit_waybar_signal; exit 130; fi
     fi
-    GEOM="$(echo -n "$GEOM" | tr -s '[:space:]' ' ')"
+    local -a _g_arr=($GEOM)
+    GEOM="${_g_arr[*]}"
     if [[ "${GEOM_IN_NAME,,}" == "on" ]]; then gtok="$(geom_token "$GEOM")"; marker="REGION${gtok:+-$gtok}"; else marker="REGION"; fi
 
     if [[ -n "$GEOM" && -f "$DRAWBOX" ]]; then
@@ -609,7 +610,12 @@ start_rec() {
       [[ "$CODEC_WL" != "auto" ]] && args+=( --codec "$CODEC_WL" )
       if [[ "$AUDIO" == "on" ]]; then 
         args+=( --audio )
-        [[ -n "$AUDIO_DEVICE" ]] && args+=( --audio-device "$AUDIO_DEVICE" )
+        local ad="$AUDIO_DEVICE"
+        if [[ -z "$ad" ]] && has pactl; then
+          local def_sink="$(pactl get-default-sink 2>/dev/null || true)"
+          [[ -n "$def_sink" ]] && ad="${def_sink}.monitor"
+        fi
+        [[ -n "$ad" ]] && args+=( --audio-device "$ad" )
       fi
       if [[ -n "$FRAMERATE" ]]; then
         if [[ "$FRAMERATE" =~ ^[0-9]+$ && "$FRAMERATE" -gt 0 ]]; then args+=( -m "$FRAMERATE" )
@@ -622,7 +628,12 @@ start_rec() {
       args+=( --file "$SAVE_PATH" -c "$CODEC_WF" )
       [[ -n "$dev" ]] && args+=( -d "$dev" )
       if [[ "$AUDIO" == "on" ]]; then 
-        if [[ -n "$AUDIO_DEVICE" ]]; then args+=( "--audio=$AUDIO_DEVICE" )
+        local ad="$AUDIO_DEVICE"
+        if [[ -z "$ad" ]] && has pactl; then
+          local def_sink="$(pactl get-default-sink 2>/dev/null || true)"
+          [[ -n "$def_sink" ]] && ad="${def_sink}.monitor"
+        fi
+        if [[ -n "$ad" ]]; then args+=( "--audio=$ad" )
         else args+=( "-a" ); fi
       fi
       if [[ -n "$FRAMERATE" ]]; then
