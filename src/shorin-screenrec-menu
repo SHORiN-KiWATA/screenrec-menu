@@ -151,6 +151,7 @@ msg() {
         err_need_slurp)   printf "需要安装 'slurp' 以进行区域选择。" ;;
         err_need_ffmpeg)  printf "GIF 转换需要 'ffmpeg'，但未找到。" ;;
         err_need_pactl)   printf "需要 'pactl' (pulseaudio-utils) 以列出音频设备。" ;;
+        err_need_file_opener) printf "需要安装 'xdg-open' 或 'gio' 以打开文件目录。" ;;
         cancel_no_mode)   printf "已取消：未选择录制模式。" ;;
         cancel_no_output) printf "已取消：未选择输出。" ;;
         cancel_no_region) printf "已取消：未选择区域。" ;;
@@ -168,6 +169,7 @@ msg() {
         menu_fullscreen) printf "全屏录制" ;;
         menu_region)     printf "区域录制" ;;
         menu_gif_region) printf "录制 GIF (区域)" ;;
+        menu_open_dir)   printf "打开文件目录" ;;
         title_settings)  printf "设置..." ;;
         menu_settings)   printf "设置..." ;;
         menu_set_engine) printf "引擎：%s" "$@" ;;
@@ -201,6 +203,7 @@ msg() {
         err_need_slurp)   printf "Error: 'slurp' required for region selection." ;;
         err_need_ffmpeg)  printf "Error: 'ffmpeg' required for GIF conversion." ;;
         err_need_pactl)   printf "Error: 'pactl' required to list audio devices." ;;
+        err_need_file_opener) printf "Error: 'xdg-open' or 'gio' required to open file directory." ;;
         cancel_no_mode)   printf "Canceled: no recording mode selected." ;;
         cancel_no_output) printf "Canceled: no output selected." ;;
         cancel_no_region) printf "Canceled: no region selected." ;;
@@ -218,6 +221,7 @@ msg() {
         menu_fullscreen) printf "Fullscreen" ;;
         menu_region)     printf "Region" ;;
         menu_gif_region) printf "Record GIF (Region)" ;;
+        menu_open_dir)   printf "Open File Directory" ;;
         title_settings)  printf "Settings..." ;;
         menu_settings)   printf "Settings..." ;;
         menu_set_engine) printf "Engine: %s" "$@" ;;
@@ -295,6 +299,20 @@ get_save_dir() {
   if has xdg-user-dir; then videos="$(xdg-user-dir VIDEOS 2>/dev/null || true)"; fi
   videos="${videos:-"$HOME/Videos"}"
   echo "${SAVE_DIR_ENV:-"$videos/$APP_NAME"}"
+}
+
+open_save_dir() {
+  local dir; dir="$(get_save_dir)"
+  mkdir -p "$dir"
+
+  if has xdg-open; then
+    xdg-open "$dir" >/dev/null 2>&1 &
+  elif has gio; then
+    gio open "$dir" >/dev/null 2>&1 &
+  else
+    local msg; msg="$(msg err_need_file_opener)"
+    echo_terminal "$msg"; notify "$msg"
+  fi
 }
 
 list_render_nodes() {
@@ -509,14 +527,16 @@ decide_mode() {
   local L_FULL="$(msg menu_fullscreen)"
   local L_REGION="$(msg menu_region)"
   local L_GIF="$(msg menu_gif_region)"
+  local L_OPEN_DIR="$(msg menu_open_dir)"
   local L_SETTINGS="$(msg menu_settings)"
   local L_EXIT="$(msg menu_exit)"
-  
+
   while :; do
-    local pick; pick="$(menu_pick "$(msg title_mode)" "$L_FULL" "$L_REGION" "$L_GIF" "$L_SETTINGS" "$L_EXIT")" || return 130
+    local pick; pick="$(menu_pick "$(msg title_mode)" "$L_FULL" "$L_REGION" "$L_GIF" "$L_OPEN_DIR" "$L_SETTINGS" "$L_EXIT")" || return 130
     if   [[ "$pick" == "$L_FULL"    ]]; then MODE_DECIDED="full";    return 0
     elif [[ "$pick" == "$L_REGION"  ]]; then MODE_DECIDED="region"; return 0
     elif [[ "$pick" == "$L_GIF"     ]]; then MODE_DECIDED="region"; IS_GIF_MODE="true"; return 0
+    elif [[ "$pick" == "$L_OPEN_DIR" ]]; then open_save_dir; exit 0
     elif [[ "$pick" == "$L_SETTINGS" ]]; then show_settings_menu; continue
     elif [[ "$pick" == "$L_EXIT"    ]]; then return 130
     else return 130; fi
